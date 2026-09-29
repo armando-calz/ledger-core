@@ -1,5 +1,7 @@
 # ledger-core
 
+[![CI](https://github.com/armando-calz/ledger-core/actions/workflows/ci.yml/badge.svg)](https://github.com/armando-calz/ledger-core/actions/workflows/ci.yml)
+
 A double-entry ledger service for moving money between accounts — correctly, idempotently and safely under concurrency.
 
 > **Status:** 🚧 early development. The roadmap below tracks what is done and what is next.
