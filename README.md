@@ -55,7 +55,7 @@ Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Testcontainers · D
 ## Roadmap
 
 - [x] Project bootstrap
-- [ ] `Money` value object and currency handling
+- [x] `Money` value object and currency handling
 - [ ] Domain model: accounts, journal entries, postings with the zero-sum invariant
 - [ ] PostgreSQL persistence with Flyway migrations
 - [ ] REST API: create accounts, post transfers, query balances and history (OpenAPI docs)
