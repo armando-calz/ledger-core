@@ -40,13 +40,15 @@ erDiagram
 
 **Invariant:** for every journal entry, the postings in each currency sum to zero.
 
-A transfer of `$100.00 MXN` from Alice to Bob becomes one journal entry with two postings:
+Positive amounts are **debits**, negative amounts are **credits**. Customer wallets are *liability* accounts — the money in them is owed to the customer — so a wallet balance increases with credits (see [ADR 0002](docs/adr/0002-account-types-and-sign-convention.md)).
 
-| Account | Amount (minor units) |
-|---|---|
-| Alice | `-10000` |
-| Bob | `+10000` |
-| **Sum** | **`0`** |
+Alice pays Bob `$100.00 MXN` from her wallet: one journal entry, two postings.
+
+| Account | Type | Posting (minor units) | Balance seen by the customer |
+|---|---|---|---|
+| Alice wallet | Liability | `+10000` (debit) | decreases by 100.00 |
+| Bob wallet | Liability | `-10000` (credit) | increases by 100.00 |
+| **Sum** | | **`0`** | |
 
 ## Tech stack
 
@@ -57,7 +59,7 @@ Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Testcontainers · D
 - [x] Project bootstrap
 - [x] `Money` value object and currency handling
 - [x] Journal entries and postings with the per-currency zero-sum invariant
-- [ ] Account model: types, currency, status
+- [x] Account model: types, currency, status
 - [ ] PostgreSQL persistence with Flyway migrations
 - [ ] REST API: create accounts, post transfers, query balances and history (OpenAPI docs)
 - [ ] Idempotency keys for transfer requests

@@ -27,12 +27,13 @@ class JournalEntryTest {
     class Transfers {
 
         @Test
-        void createsOneCreditAndOneDebitOfTheSameAmount() {
+        void debitsOneAccountAndCreditsTheOtherBySameAmount() {
+            // Alice pays Bob: both are customer wallets (liabilities)
             JournalEntry entry = JournalEntry.transfer(JournalEntryId.random(), alice, bob, mxn("100.00"), "Dinner");
 
             assertThat(entry.postings()).containsExactly(
-                    new Posting(alice, mxn("-100.00")),
-                    new Posting(bob, mxn("100.00")));
+                    new Posting(alice, mxn("100.00")),
+                    new Posting(bob, mxn("-100.00")));
             assertThat(entry.description()).isEqualTo("Dinner");
         }
 

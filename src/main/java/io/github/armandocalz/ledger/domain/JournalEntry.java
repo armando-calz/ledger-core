@@ -25,16 +25,22 @@ public record JournalEntry(JournalEntryId id, String description, List<Posting> 
         requireBalanced(postings);
     }
 
-    /** A simple transfer: {@code amount} leaves {@code from} and arrives at {@code to}. */
-    public static JournalEntry transfer(JournalEntryId id, AccountId from, AccountId to, Money amount, String description) {
-        Objects.requireNonNull(from, "from");
-        Objects.requireNonNull(to, "to");
-        if (from.equals(to)) {
-            throw new IllegalArgumentException("Cannot transfer to the same account: " + from);
+    /**
+     * A two-leg entry that debits one account and credits another by the same amount.
+     *
+     * <p>Which side "sends" money depends on the account types (ADR 0002). Between two
+     * customer wallets (liabilities), a payment from Alice to Bob debits Alice and credits Bob.
+     */
+    public static JournalEntry transfer(
+            JournalEntryId id, AccountId debitAccount, AccountId creditAccount, Money amount, String description) {
+        Objects.requireNonNull(debitAccount, "debitAccount");
+        Objects.requireNonNull(creditAccount, "creditAccount");
+        if (debitAccount.equals(creditAccount)) {
+            throw new IllegalArgumentException("Cannot debit and credit the same account: " + debitAccount);
         }
         return new JournalEntry(id, description, List.of(
-                Posting.credit(from, amount),
-                Posting.debit(to, amount)));
+                Posting.debit(debitAccount, amount),
+                Posting.credit(creditAccount, amount)));
     }
 
     private static void requireBalanced(List<Posting> postings) {
