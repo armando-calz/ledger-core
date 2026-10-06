@@ -2,11 +2,13 @@ package io.github.armandocalz.ledger.infrastructure.persistence;
 
 import io.github.armandocalz.ledger.domain.Account;
 import io.github.armandocalz.ledger.domain.AccountId;
+import io.github.armandocalz.ledger.domain.AccountMovement;
 import io.github.armandocalz.ledger.domain.JournalEntry;
 import io.github.armandocalz.ledger.domain.JournalEntryId;
 import io.github.armandocalz.ledger.domain.JournalEntryRepository;
 import io.github.armandocalz.ledger.domain.Money;
 import io.github.armandocalz.ledger.domain.Posting;
+import java.time.OffsetDateTime;
 import java.util.Currency;
 import java.util.List;
 import java.util.Optional;
@@ -75,5 +77,25 @@ class JdbcJournalEntryRepository implements JournalEntryRepository {
                 .query(Long.class)
                 .single();
         return Money.ofMinor(total, account.currency());
+    }
+
+    @Override
+    public List<AccountMovement> movementsOf(Account account, int limit) {
+        return jdbc.sql("""
+                SELECT e.id, e.description, e.created_at, p.amount_minor
+                FROM postings p
+                JOIN journal_entries e ON e.id = p.journal_entry_id
+                WHERE p.account_id = :accountId
+                ORDER BY p.id DESC
+                LIMIT :limit
+                """)
+                .param("accountId", account.id().value())
+                .param("limit", limit)
+                .query((rs, rowNum) -> new AccountMovement(
+                        new JournalEntryId(rs.getObject("id", UUID.class)),
+                        rs.getString("description"),
+                        Money.ofMinor(rs.getLong("amount_minor"), account.currency()),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant()))
+                .list();
     }
 }
