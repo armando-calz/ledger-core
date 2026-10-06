@@ -60,7 +60,7 @@ Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Testcontainers · D
 - [x] `Money` value object and currency handling
 - [x] Journal entries and postings with the per-currency zero-sum invariant
 - [x] Account model: types, currency, status
-- [ ] PostgreSQL persistence with Flyway migrations
+- [x] PostgreSQL persistence with Flyway migrations, with the invariants also enforced by the database
 - [ ] REST API: create accounts, post transfers, query balances and history (OpenAPI docs)
 - [ ] Idempotency keys for transfer requests
 - [ ] Concurrency control with tests that race parallel transfers
@@ -71,13 +71,22 @@ Design decisions are recorded as ADRs in [`docs/adr`](docs/adr).
 
 ## Running locally
 
-Requirements: JDK 21 (a [`.sdkmanrc`](.sdkmanrc) is included for [SDKMAN!](https://sdkman.io) users).
+Requirements: JDK 21 (a [`.sdkmanrc`](.sdkmanrc) is included for [SDKMAN!](https://sdkman.io) users) and Docker.
 
 ```bash
-./mvnw verify          # build and run the tests
-./mvnw spring-boot:run # start the service on :8080
+./mvnw verify              # unit tests + integration tests against a PostgreSQL container
+./mvnw spring-boot:test-run # start the service on :8080 with a throwaway PostgreSQL
 curl localhost:8080/actuator/health
 ```
+
+<details>
+<summary>Using Colima instead of Docker Desktop</summary>
+
+```bash
+export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+```
+</details>
 
 ## License
 
