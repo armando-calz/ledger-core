@@ -61,13 +61,52 @@ Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Testcontainers · D
 - [x] Journal entries and postings with the per-currency zero-sum invariant
 - [x] Account model: types, currency, status
 - [x] PostgreSQL persistence with Flyway migrations, with the invariants also enforced by the database
-- [ ] REST API: create accounts, post transfers, query balances and history (OpenAPI docs)
+- [x] REST API: open accounts, post transfers, query balances and movements (OpenAPI docs, RFC 9457 errors)
 - [ ] Idempotency keys for transfer requests
+- [ ] Overdraft protection (insufficient funds), checked under row locks
 - [ ] Concurrency control with tests that race parallel transfers
 - [ ] Reversals (corrections as new entries)
 - [ ] Docker Compose setup for local run
 
 Design decisions are recorded as ADRs in [`docs/adr`](docs/adr).
+
+## API
+
+Interactive docs at `http://localhost:8080/swagger-ui.html` once the service is running. Amounts are **decimal strings** (`"100.50"`), never floating-point numbers. Errors use [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details: `400` for malformed requests, `404` for unknown accounts, and `422` for requests that would break a ledger rule.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/accounts` | Open an account |
+| `GET` | `/api/v1/accounts/{id}` | Get an account |
+| `GET` | `/api/v1/accounts/{id}/balance` | Balance from the holder's point of view |
+| `GET` | `/api/v1/accounts/{id}/movements` | Most recent movements, newest first |
+| `POST` | `/api/v1/transfers` | Debit one account and credit another |
+
+```bash
+# Alice (a customer wallet) pays Bob 100.00 MXN
+curl -s localhost:8080/api/v1/transfers -H 'Content-Type: application/json' -d '{
+  "debitAccountId": "<alice-wallet-id>",
+  "creditAccountId": "<bob-wallet-id>",
+  "amount": "100.00", "currency": "MXN", "description": "Dinner"
+}'
+```
+
+```json
+{
+  "id": "6e5a5ea5-374c-4340-8a36-959c28d225a0",
+  "description": "Dinner",
+  "postings": [
+    { "accountId": "3a30a91d-…", "amount": "100.00",  "currency": "MXN" },
+    { "accountId": "c74bb973-…", "amount": "-100.00", "currency": "MXN" }
+  ]
+}
+```
+
+A transfer in the wrong currency is rejected without moving any money:
+
+```json
+{ "status": 422, "title": "Ledger rule violated", "detail": "Currency mismatch: expected MXN but got USD" }
+```
 
 ## Running locally
 
