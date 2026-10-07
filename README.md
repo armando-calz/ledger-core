@@ -63,8 +63,8 @@ Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Testcontainers · D
 - [x] PostgreSQL persistence with Flyway migrations, with the invariants also enforced by the database
 - [x] REST API: open accounts, post transfers, query balances and movements (OpenAPI docs, RFC 9457 errors)
 - [ ] Idempotency keys for transfer requests
-- [ ] Overdraft protection (insufficient funds), checked under row locks
-- [ ] Concurrency control with tests that race parallel transfers
+- [x] Overdraft protection (insufficient funds), checked under row locks
+- [x] Concurrency control with tests that race parallel transfers (no double spending, no deadlocks)
 - [ ] Reversals (corrections as new entries)
 - [ ] Docker Compose setup for local run
 
@@ -102,11 +102,19 @@ curl -s localhost:8080/api/v1/transfers -H 'Content-Type: application/json' -d '
 }
 ```
 
-A transfer in the wrong currency is rejected without moving any money:
+A transfer that would break a ledger rule is rejected without moving any money:
+
+```json
+{ "status": 422, "title": "Insufficient funds", "detail": "Insufficient funds in account 3a30a91d-…: available 50.00 MXN, requested 50.01 MXN" }
+```
 
 ```json
 { "status": 422, "title": "Ledger rule violated", "detail": "Currency mismatch: expected MXN but got USD" }
 ```
+
+## Concurrency
+
+Every transfer locks the accounts it touches (`SELECT … FOR UPDATE`, always in id order) before checking balances, so concurrent payments cannot spend the same money twice and opposing transfers cannot deadlock. [`LedgerConcurrencyIT`](src/test/java/io/github/armandocalz/ledger/application/LedgerConcurrencyIT.java) fires 500 simultaneous payments at a wallet holding enough for 100. Without the locks, 103–104 of them went through. With them, exactly 100 do. Details in [ADR 0004](docs/adr/0004-overdraft-protection-with-ordered-row-locks.md).
 
 ## Running locally
 
