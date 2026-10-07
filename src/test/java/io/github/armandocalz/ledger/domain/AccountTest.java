@@ -85,6 +85,47 @@ class AccountTest {
         }
     }
 
+    @Nested
+    class Overdraft {
+
+        private final Money oneHundred = Money.of("100.00", MXN);
+
+        @Test
+        void allowsSpendingTheWholeBalance() {
+            // Wallet holding 100.00 (raw -100.00) is debited 100.00
+            wallet.ensureCanApply(oneHundred.negate(), oneHundred);
+        }
+
+        @Test
+        void rejectsSpendingMoreThanTheBalance() {
+            assertThatThrownBy(() -> wallet.ensureCanApply(oneHundred.negate(), Money.of("100.01", MXN)))
+                    .isInstanceOf(InsufficientFundsException.class)
+                    .hasMessageContaining("available 100.00 MXN")
+                    .hasMessageContaining("requested 100.01 MXN");
+        }
+
+        @Test
+        void alwaysAllowsIncreasingTheBalance() {
+            wallet.ensureCanApply(Money.zero(MXN), oneHundred.negate());
+        }
+
+        @Test
+        void appliesToEveryAccountTypeFromTheHoldersPointOfView() {
+            Account cash = Account.open(AccountId.random(), "Cash", AccountType.ASSET, MXN);
+
+            cash.ensureCanApply(oneHundred, oneHundred.negate());
+            assertThatThrownBy(() -> cash.ensureCanApply(oneHundred, Money.of("-100.01", MXN)))
+                    .isInstanceOf(InsufficientFundsException.class);
+        }
+
+        @Test
+        void canBeAllowedExplicitly() {
+            Account settlement = Account.open(AccountId.random(), "Settlement", AccountType.ASSET, MXN, true);
+
+            settlement.ensureCanApply(Money.zero(MXN), Money.of("-1000.00", MXN));
+        }
+    }
+
     @ParameterizedTest
     @CsvSource({
             "ASSET,     -2500, -2500",

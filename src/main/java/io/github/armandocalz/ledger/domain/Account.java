@@ -8,8 +8,13 @@ import java.util.Objects;
  *
  * <p>An account holds a single currency for its whole life; multi-currency holders get one
  * account per currency.
+ *
+ * <p>Unless {@code allowNegativeBalance} is set, the balance seen by the holder can never go
+ * below zero. Customer wallets must never allow it; some internal accounts (e.g. a settlement
+ * account with a partner bank) may.
  */
-public record Account(AccountId id, String name, AccountType type, Currency currency, AccountStatus status) {
+public record Account(
+        AccountId id, String name, AccountType type, Currency currency, AccountStatus status, boolean allowNegativeBalance) {
 
     public Account {
         Objects.requireNonNull(id, "id");
@@ -23,7 +28,11 @@ public record Account(AccountId id, String name, AccountType type, Currency curr
     }
 
     public static Account open(AccountId id, String name, AccountType type, Currency currency) {
-        return new Account(id, name, type, currency, AccountStatus.ACTIVE);
+        return open(id, name, type, currency, false);
+    }
+
+    public static Account open(AccountId id, String name, AccountType type, Currency currency, boolean allowNegativeBalance) {
+        return new Account(id, name, type, currency, AccountStatus.ACTIVE, allowNegativeBalance);
     }
 
     /**
@@ -43,6 +52,22 @@ public record Account(AccountId id, String name, AccountType type, Currency curr
         }
         if (status != AccountStatus.ACTIVE) {
             throw new AccountNotActiveException(id, status);
+        }
+    }
+
+    /**
+     * Checks that applying {@code delta} (raw, debits positive) to an account whose raw balance
+     * is {@code currentRawBalance} keeps the holder's balance at or above zero.
+     *
+     * <p>Callers must hold a lock on the account while checking and applying the change,
+     * otherwise two concurrent withdrawals can both pass the check (ADR 0004).
+     *
+     * @throws InsufficientFundsException if the resulting balance would be negative
+     */
+    public void ensureCanApply(Money currentRawBalance, Money delta) {
+        Money resulting = type.presentBalance(currentRawBalance.plus(delta));
+        if (resulting.isNegative() && !allowNegativeBalance) {
+            throw new InsufficientFundsException(id, type.presentBalance(currentRawBalance), type.presentBalance(delta).negate());
         }
     }
 
@@ -69,6 +94,6 @@ public record Account(AccountId id, String name, AccountType type, Currency curr
     }
 
     private Account withStatus(AccountStatus newStatus) {
-        return new Account(id, name, type, currency, newStatus);
+        return new Account(id, name, type, currency, newStatus, allowNegativeBalance);
     }
 }
