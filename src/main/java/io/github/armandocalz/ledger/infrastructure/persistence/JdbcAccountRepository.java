@@ -7,7 +7,11 @@ import io.github.armandocalz.ledger.domain.AccountStatus;
 import io.github.armandocalz.ledger.domain.AccountType;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Collection;
 import java.util.Currency;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -45,6 +49,18 @@ class JdbcAccountRepository implements AccountRepository {
                 .param("id", id.value())
                 .query(JdbcAccountRepository::mapAccount)
                 .optional();
+    }
+
+    @Override
+    public Map<AccountId, Account> lockAll(Collection<AccountId> ids) {
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return jdbc.sql("SELECT " + COLUMNS + " FROM accounts WHERE id IN (:ids) ORDER BY id FOR UPDATE")
+                .param("ids", ids.stream().map(AccountId::value).toList())
+                .query(JdbcAccountRepository::mapAccount)
+                .stream()
+                .collect(Collectors.toMap(Account::id, Function.identity()));
     }
 
     @Override

@@ -11,7 +11,11 @@ import io.github.armandocalz.ledger.domain.JournalEntryRepository;
 import io.github.armandocalz.ledger.domain.Money;
 import io.github.armandocalz.ledger.domain.Posting;
 import java.util.Currency;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +35,12 @@ public class LedgerService {
 
     @Transactional
     public Account openAccount(String name, AccountType type, Currency currency) {
-        Account account = Account.open(AccountId.random(), name, type, currency);
+        return openAccount(name, type, currency, false);
+    }
+
+    @Transactional
+    public Account openAccount(String name, AccountType type, Currency currency, boolean allowNegativeBalance) {
+        Account account = Account.open(AccountId.random(), name, type, currency, allowNegativeBalance);
         accounts.create(account);
         return account;
     }
@@ -60,13 +69,37 @@ public class LedgerService {
         return post(JournalEntry.transfer(JournalEntryId.random(), debitAccount, creditAccount, amount, description));
     }
 
-    /** Validates every posting against its account, then appends the entry. */
+    /**
+     * Validates every posting against its account (currency, status, overdraft), then appends
+     * the entry.
+     *
+     * <p>All involved accounts are locked first, so the balances and statuses checked here
+     * cannot change before the entry is committed (ADR 0004).
+     */
     @Transactional
     public JournalEntry post(JournalEntry entry) {
+        Set<AccountId> ids = entry.postings().stream().map(Posting::accountId).collect(Collectors.toSet());
+        Map<AccountId, Account> locked = accounts.lockAll(ids);
         for (Posting posting : entry.postings()) {
-            getAccount(posting.accountId()).ensureAccepts(posting);
+            Account account = locked.get(posting.accountId());
+            if (account == null) {
+                throw new AccountNotFoundException(posting.accountId());
+            }
+            account.ensureAccepts(posting);
         }
+        netChangePerAccount(entry).forEach((id, delta) -> {
+            Account account = locked.get(id);
+            account.ensureCanApply(entries.rawBalanceOf(account), delta);
+        });
         entries.append(entry);
         return entry;
+    }
+
+    private static Map<AccountId, Money> netChangePerAccount(JournalEntry entry) {
+        Map<AccountId, Money> deltas = new HashMap<>();
+        for (Posting posting : entry.postings()) {
+            deltas.merge(posting.accountId(), posting.amount(), Money::plus);
+        }
+        return deltas;
     }
 }
