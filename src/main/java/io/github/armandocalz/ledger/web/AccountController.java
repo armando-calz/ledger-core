@@ -37,7 +37,8 @@ class AccountController {
     @PostMapping
     @Operation(summary = "Open an account")
     ResponseEntity<AccountResponse> open(@Valid @RequestBody OpenAccountRequest request) {
-        Account account = ledger.openAccount(request.name(), request.type(), Currency.getInstance(request.currency()));
+        Account account = ledger.openAccount(request.name(), request.type(), Currency.getInstance(request.currency()),
+                request.negativeBalanceAllowed());
         return ResponseEntity.created(URI.create("/api/v1/accounts/" + account.id())).body(AccountResponse.from(account));
     }
 

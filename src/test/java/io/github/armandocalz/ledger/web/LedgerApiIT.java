@@ -73,7 +73,8 @@ class LedgerApiIT {
 
         assertThat(mvc.get().uri("/api/v1/accounts/{id}", id)).hasStatusOk().bodyJson()
                 .isLenientlyEqualTo("""
-                        {"id": "%s", "name": "Alice wallet", "type": "LIABILITY", "currency": "MXN", "status": "ACTIVE"}
+                        {"id": "%s", "name": "Alice wallet", "type": "LIABILITY", "currency": "MXN", "status": "ACTIVE",
+                         "allowNegativeBalance": false}
                         """.formatted(id));
     }
 
@@ -110,6 +111,22 @@ class LedgerApiIT {
                     .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(transfer(alice, bob, "0", "MXN")).as("zero amount")
                     .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        }
+
+        @Test
+        void overdraftIs422WithTheAvailableBalance() throws Exception {
+            String cash = openAccount("Cash at bank", "ASSET", "MXN");
+            String alice = openAccount("Alice wallet", "LIABILITY", "MXN");
+            String bob = openAccount("Bob wallet", "LIABILITY", "MXN");
+            transfer(cash, alice, "50.00", "MXN");
+
+            assertThat(transfer(alice, bob, "50.01", "MXN"))
+                    .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
+                    .bodyJson()
+                    .satisfies(json -> assertThat(json).extractingPath("$.title").isEqualTo("Insufficient funds"))
+                    .extractingPath("$.detail").asString().contains("available 50.00 MXN", "requested 50.01 MXN");
+            assertThat(mvc.get().uri("/api/v1/accounts/{id}/balance", alice))
+                    .hasStatusOk().bodyJson().extractingPath("$.amount").isEqualTo("50.00");
         }
 
         @Test

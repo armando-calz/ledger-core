@@ -21,14 +21,22 @@ final class AccountDtos {
     record OpenAccountRequest(
             @NotBlank @Size(max = 100) @Schema(example = "Alice wallet") String name,
             @NotNull @Schema(example = "LIABILITY") AccountType type,
-            @NotNull @Pattern(regexp = "[A-Z]{3}") @Schema(example = "MXN", description = "ISO 4217 code") String currency) {
+            @NotNull @Pattern(regexp = "[A-Z]{3}") @Schema(example = "MXN", description = "ISO 4217 code") String currency,
+            @Schema(description = "Let the balance go below zero. Only for internal accounts, never customer wallets.",
+                    defaultValue = "false")
+            Boolean allowNegativeBalance) {
+
+        boolean negativeBalanceAllowed() {
+            return Boolean.TRUE.equals(allowNegativeBalance);
+        }
     }
 
-    record AccountResponse(UUID id, String name, AccountType type, String currency, AccountStatus status) {
+    record AccountResponse(
+            UUID id, String name, AccountType type, String currency, AccountStatus status, boolean allowNegativeBalance) {
 
         static AccountResponse from(Account account) {
             return new AccountResponse(account.id().value(), account.name(), account.type(),
-                    account.currency().getCurrencyCode(), account.status());
+                    account.currency().getCurrencyCode(), account.status(), account.allowNegativeBalance());
         }
     }
 
