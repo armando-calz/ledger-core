@@ -141,6 +141,57 @@ class LedgerApiIT {
         }
     }
 
+    @Nested
+    class Idempotency {
+
+        private MvcTestResult transferWithKey(String key, String debit, String credit, String amount) {
+            return mvc.post().uri("/api/v1/transfers")
+                    .header("Idempotency-Key", key)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                            {"debitAccountId": "%s", "creditAccountId": "%s",
+                             "amount": "%s", "currency": "MXN", "description": "test"}
+                            """.formatted(debit, credit, amount))
+                    .exchange();
+        }
+
+        @Test
+        void retryReplaysTheOriginalResponse() throws Exception {
+            String cash = openAccount("Cash at bank", "ASSET", "MXN");
+            String alice = openAccount("Alice wallet", "LIABILITY", "MXN");
+            String key = UUID.randomUUID().toString();
+
+            MvcTestResult first = transferWithKey(key, cash, alice, "50.00");
+            MvcTestResult retry = transferWithKey(key, cash, alice, "50.00");
+
+            assertThat(first).hasStatus(HttpStatus.CREATED).hasHeader("Idempotent-Replayed", "false");
+            assertThat(retry).hasStatus(HttpStatus.CREATED).hasHeader("Idempotent-Replayed", "true");
+            assertThat(retry.getResponse().getContentAsString()).isEqualTo(first.getResponse().getContentAsString());
+            assertThat(mvc.get().uri("/api/v1/accounts/{id}/balance", alice))
+                    .hasStatusOk().bodyJson().extractingPath("$.amount").isEqualTo("50.00");
+        }
+
+        @Test
+        void reusingAKeyForADifferentRequestIs422() throws Exception {
+            String cash = openAccount("Cash at bank", "ASSET", "MXN");
+            String alice = openAccount("Alice wallet", "LIABILITY", "MXN");
+            String key = UUID.randomUUID().toString();
+            transferWithKey(key, cash, alice, "50.00");
+
+            assertThat(transferWithKey(key, cash, alice, "60.00"))
+                    .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
+                    .bodyJson().extractingPath("$.title").isEqualTo("Idempotency key reused");
+        }
+
+        @Test
+        void overlongKeysAre400() throws Exception {
+            String cash = openAccount("Cash at bank", "ASSET", "MXN");
+            String alice = openAccount("Alice wallet", "LIABILITY", "MXN");
+
+            assertThat(transferWithKey("k".repeat(256), cash, alice, "1.00")).hasStatus(HttpStatus.BAD_REQUEST);
+        }
+    }
+
     @Test
     void publishesOpenApiDocs() throws Exception {
         assertThat(mvc.get().uri("/v3/api-docs")).hasStatusOk()

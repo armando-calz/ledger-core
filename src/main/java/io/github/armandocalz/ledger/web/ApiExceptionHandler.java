@@ -1,6 +1,7 @@
 package io.github.armandocalz.ledger.web;
 
 import io.github.armandocalz.ledger.application.AccountNotFoundException;
+import io.github.armandocalz.ledger.application.IdempotencyKeyReusedException;
 import io.github.armandocalz.ledger.domain.InsufficientFundsException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -18,6 +19,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AccountNotFoundException.class)
     ProblemDetail notFound(AccountNotFoundException e) {
         return problem(HttpStatus.NOT_FOUND, "Account not found", e);
+    }
+
+    @ExceptionHandler(IdempotencyKeyReusedException.class)
+    ProblemDetail idempotencyKeyReused(IdempotencyKeyReusedException e) {
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Idempotency key reused", e);
     }
 
     @ExceptionHandler(InsufficientFundsException.class)
