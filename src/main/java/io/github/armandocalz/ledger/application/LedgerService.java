@@ -27,10 +27,12 @@ public class LedgerService {
 
     private final AccountRepository accounts;
     private final JournalEntryRepository entries;
+    private final IdempotencyKeyRepository idempotencyKeys;
 
-    public LedgerService(AccountRepository accounts, JournalEntryRepository entries) {
+    public LedgerService(AccountRepository accounts, JournalEntryRepository entries, IdempotencyKeyRepository idempotencyKeys) {
         this.accounts = accounts;
         this.entries = entries;
+        this.idempotencyKeys = idempotencyKeys;
     }
 
     @Transactional
@@ -66,7 +68,44 @@ public class LedgerService {
 
     @Transactional
     public JournalEntry transfer(AccountId debitAccount, AccountId creditAccount, Money amount, String description) {
-        return post(JournalEntry.transfer(JournalEntryId.random(), debitAccount, creditAccount, amount, description));
+        return transfer(new TransferCommand(debitAccount, creditAccount, amount, description), null).entry();
+    }
+
+    /**
+     * Posts a transfer at most once per idempotency key (ADR 0005).
+     *
+     * <p>The key is claimed in the same transaction as the entry. A retry after success returns
+     * the original entry; a retry after a failure (e.g. insufficient funds) runs again, because
+     * the failed transaction rolled back its claim.
+     *
+     * @param idempotencyKey optional; {@code null} disables idempotency
+     * @throws IdempotencyKeyReusedException if the key was used for a different request
+     */
+    @Transactional
+    public TransferResult transfer(TransferCommand command, String idempotencyKey) {
+        if (idempotencyKey != null) {
+            String fingerprint = command.fingerprint();
+            if (!idempotencyKeys.tryClaim(idempotencyKey, fingerprint)) {
+                return replay(idempotencyKey, fingerprint);
+            }
+        }
+        JournalEntry entry = post(JournalEntry.transfer(JournalEntryId.random(),
+                command.debitAccount(), command.creditAccount(), command.amount(), command.description()));
+        if (idempotencyKey != null) {
+            idempotencyKeys.complete(idempotencyKey, entry.id());
+        }
+        return new TransferResult(entry, false);
+    }
+
+    private TransferResult replay(String idempotencyKey, String fingerprint) {
+        IdempotencyKeyRepository.StoredKey stored = idempotencyKeys.find(idempotencyKey)
+                .orElseThrow(() -> new IllegalStateException("Claimed idempotency key not found: " + idempotencyKey));
+        if (!stored.requestHash().equals(fingerprint)) {
+            throw new IdempotencyKeyReusedException(idempotencyKey);
+        }
+        JournalEntry original = entries.findById(stored.journalEntryId())
+                .orElseThrow(() -> new IllegalStateException("Entry not found for idempotency key: " + idempotencyKey));
+        return new TransferResult(original, true);
     }
 
     /**
