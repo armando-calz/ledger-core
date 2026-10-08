@@ -62,7 +62,7 @@ Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Testcontainers · D
 - [x] Account model: types, currency, status
 - [x] PostgreSQL persistence with Flyway migrations, with the invariants also enforced by the database
 - [x] REST API: open accounts, post transfers, query balances and movements (OpenAPI docs, RFC 9457 errors)
-- [ ] Idempotency keys for transfer requests
+- [x] Idempotency keys for transfer requests (safe retries, including concurrent ones)
 - [x] Overdraft protection (insufficient funds), checked under row locks
 - [x] Concurrency control with tests that race parallel transfers (no double spending, no deadlocks)
 - [ ] Reversals (corrections as new entries)
@@ -84,7 +84,9 @@ Interactive docs at `http://localhost:8080/swagger-ui.html` once the service is 
 
 ```bash
 # Alice (a customer wallet) pays Bob 100.00 MXN
-curl -s localhost:8080/api/v1/transfers -H 'Content-Type: application/json' -d '{
+curl -s localhost:8080/api/v1/transfers \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: 0f8a2c6e-5d1b-4e7a-9c3f-2b6d8e1a4c70' -d '{
   "debitAccountId": "<alice-wallet-id>",
   "creditAccountId": "<bob-wallet-id>",
   "amount": "100.00", "currency": "MXN", "description": "Dinner"
@@ -101,6 +103,8 @@ curl -s localhost:8080/api/v1/transfers -H 'Content-Type: application/json' -d '
   ]
 }
 ```
+
+Retrying with the same `Idempotency-Key` returns the same entry with `Idempotent-Replayed: true` and moves no money; reusing the key for a different request is a `422`. See [ADR 0005](docs/adr/0005-idempotency-keys-claimed-in-the-same-transaction.md).
 
 A transfer that would break a ledger rule is rejected without moving any money:
 
