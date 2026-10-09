@@ -1,6 +1,7 @@
 package io.github.armandocalz.ledger.web;
 
 import io.github.armandocalz.ledger.domain.JournalEntry;
+import io.github.armandocalz.ledger.domain.JournalEntryId;
 import io.github.armandocalz.ledger.domain.Posting;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -35,11 +36,25 @@ final class TransferDtos {
         }
     }
 
-    record JournalEntryResponse(UUID id, String description, List<PostingResponse> postings) {
+    record JournalEntryResponse(
+            UUID id,
+            String description,
+            List<PostingResponse> postings,
+            @Schema(description = "Set when this entry is a reversal: the entry it undoes") UUID reversesEntryId,
+            @Schema(description = "Set when this entry was reversed: the reversal's id") UUID reversedByEntryId) {
 
         static JournalEntryResponse from(JournalEntry entry) {
-            return new JournalEntryResponse(entry.id().value(), entry.description(),
-                    entry.postings().stream().map(PostingResponse::from).toList());
+            return from(entry, null);
         }
+
+        static JournalEntryResponse from(JournalEntry entry, JournalEntryId reversedBy) {
+            return new JournalEntryResponse(entry.id().value(), entry.description(),
+                    entry.postings().stream().map(PostingResponse::from).toList(),
+                    entry.reverses() == null ? null : entry.reverses().value(),
+                    reversedBy == null ? null : reversedBy.value());
+        }
+    }
+
+    record ReversalRequest(@Size(max = 500) @Schema(example = "Refund") String description) {
     }
 }

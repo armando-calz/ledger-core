@@ -1,6 +1,8 @@
 package io.github.armandocalz.ledger.web;
 
 import io.github.armandocalz.ledger.application.AccountNotFoundException;
+import io.github.armandocalz.ledger.application.EntryAlreadyReversedException;
+import io.github.armandocalz.ledger.application.EntryNotFoundException;
 import io.github.armandocalz.ledger.application.IdempotencyKeyReusedException;
 import io.github.armandocalz.ledger.domain.InsufficientFundsException;
 import org.springframework.http.HttpStatus;
@@ -19,6 +21,18 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AccountNotFoundException.class)
     ProblemDetail notFound(AccountNotFoundException e) {
         return problem(HttpStatus.NOT_FOUND, "Account not found", e);
+    }
+
+    @ExceptionHandler(EntryNotFoundException.class)
+    ProblemDetail entryNotFound(EntryNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Transfer not found", e);
+    }
+
+    @ExceptionHandler(EntryAlreadyReversedException.class)
+    ProblemDetail alreadyReversed(EntryAlreadyReversedException e) {
+        ProblemDetail problem = problem(HttpStatus.CONFLICT, "Transfer already reversed", e);
+        problem.setProperty("reversalId", e.reversal().value());
+        return problem;
     }
 
     @ExceptionHandler(IdempotencyKeyReusedException.class)

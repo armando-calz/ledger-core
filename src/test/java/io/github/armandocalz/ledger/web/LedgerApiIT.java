@@ -192,6 +192,41 @@ class LedgerApiIT {
         }
     }
 
+    @Nested
+    class Reversals {
+
+        @Test
+        void reversesATransferOnce() throws Exception {
+            String cash = openAccount("Cash at bank", "ASSET", "MXN");
+            String alice = openAccount("Alice wallet", "LIABILITY", "MXN");
+            MvcTestResult deposit = transfer(cash, alice, "80.00", "MXN");
+            String depositId = JsonPath.read(deposit.getResponse().getContentAsString(), "$.id");
+
+            MvcTestResult reversal = mvc.post().uri("/api/v1/transfers/{id}/reversal", depositId)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"description\": \"Deposit bounced\"}").exchange();
+
+            assertThat(reversal).hasStatus(HttpStatus.CREATED).bodyJson()
+                    .satisfies(json -> assertThat(json).extractingPath("$.reversesEntryId").isEqualTo(depositId))
+                    .extractingPath("$.postings[*].amount").asArray().containsExactly("-80.00", "80.00");
+            String reversalId = JsonPath.read(reversal.getResponse().getContentAsString(), "$.id");
+            assertThat(mvc.get().uri("/api/v1/transfers/{id}", depositId)).hasStatusOk()
+                    .bodyJson().extractingPath("$.reversedByEntryId").isEqualTo(reversalId);
+            assertThat(mvc.get().uri("/api/v1/accounts/{id}/balance", alice))
+                    .hasStatusOk().bodyJson().extractingPath("$.amount").isEqualTo("0.00");
+
+            assertThat(mvc.post().uri("/api/v1/transfers/{id}/reversal", depositId).exchange())
+                    .hasStatus(HttpStatus.CONFLICT)
+                    .bodyJson().extractingPath("$.reversalId").isEqualTo(reversalId);
+        }
+
+        @Test
+        void unknownTransferIs404() {
+            assertThat(mvc.post().uri("/api/v1/transfers/{id}/reversal", UUID.randomUUID()).exchange())
+                    .hasStatus(HttpStatus.NOT_FOUND);
+            assertThat(mvc.get().uri("/api/v1/transfers/{id}", UUID.randomUUID())).hasStatus(HttpStatus.NOT_FOUND);
+        }
+    }
+
     @Test
     void publishesOpenApiDocs() throws Exception {
         assertThat(mvc.get().uri("/v3/api-docs")).hasStatusOk()

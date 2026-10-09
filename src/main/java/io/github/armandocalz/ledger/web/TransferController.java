@@ -1,20 +1,28 @@
 package io.github.armandocalz.ledger.web;
 
+import io.github.armandocalz.ledger.application.EntryDetails;
 import io.github.armandocalz.ledger.application.LedgerService;
 import io.github.armandocalz.ledger.application.TransferCommand;
 import io.github.armandocalz.ledger.application.TransferResult;
 import io.github.armandocalz.ledger.domain.AccountId;
+import io.github.armandocalz.ledger.domain.JournalEntry;
+import io.github.armandocalz.ledger.domain.JournalEntryId;
 import io.github.armandocalz.ledger.domain.Money;
 import io.github.armandocalz.ledger.web.TransferDtos.JournalEntryResponse;
+import io.github.armandocalz.ledger.web.TransferDtos.ReversalRequest;
 import io.github.armandocalz.ledger.web.TransferDtos.TransferRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
+import java.net.URI;
 import java.util.Currency;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -52,5 +60,23 @@ class TransferController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .header(IDEMPOTENT_REPLAYED, Boolean.toString(result.replayed()))
                 .body(JournalEntryResponse.from(result.entry()));
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Get a transfer (journal entry), including whether it was reversed")
+    JournalEntryResponse get(@PathVariable UUID id) {
+        EntryDetails details = ledger.getEntry(new JournalEntryId(id));
+        return JournalEntryResponse.from(details.entry(), details.reversedBy());
+    }
+
+    @PostMapping("/{id}/reversal")
+    @Operation(summary = "Reverse a transfer",
+            description = "Posts a new entry that negates every posting of the original, which stays unchanged. "
+                    + "An entry can be reversed once; a second attempt is a 409 (ADR 0006).")
+    ResponseEntity<JournalEntryResponse> reverse(
+            @PathVariable UUID id, @Valid @RequestBody(required = false) ReversalRequest request) {
+        JournalEntry reversal = ledger.reverse(new JournalEntryId(id), request == null ? null : request.description());
+        return ResponseEntity.created(URI.create("/api/v1/transfers/" + reversal.id()))
+                .body(JournalEntryResponse.from(reversal));
     }
 }
