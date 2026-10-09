@@ -136,4 +136,50 @@ class JournalEntryTest {
         assertThatThrownBy(() -> entry.postings().add(Posting.debit(fees, mxn("1.00"))))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
+
+    @Nested
+    class Reversals {
+
+        @Test
+        void negatesEveryPostingAndLinksToTheOriginal() {
+            JournalEntry payment = JournalEntry.transfer(JournalEntryId.random(), alice, bob, mxn("100.00"), "Dinner");
+            JournalEntryId reversalId = JournalEntryId.random();
+
+            JournalEntry reversal = payment.reversal(reversalId, "Refund");
+
+            assertThat(reversal.id()).isEqualTo(reversalId);
+            assertThat(reversal.reverses()).isEqualTo(payment.id());
+            assertThat(reversal.isReversal()).isTrue();
+            assertThat(reversal.description()).isEqualTo("Refund");
+            assertThat(reversal.postings()).containsExactly(
+                    new Posting(alice, mxn("-100.00")),
+                    new Posting(bob, mxn("100.00")));
+        }
+
+        @Test
+        void hasADefaultDescription() {
+            JournalEntry payment = JournalEntry.transfer(JournalEntryId.random(), alice, bob, mxn("1.00"), "");
+
+            assertThat(payment.reversal(JournalEntryId.random(), " ").description()).isEqualTo("Reversal of " + payment.id());
+        }
+
+        @Test
+        void aReversalCannotBeReversed() {
+            JournalEntry payment = JournalEntry.transfer(JournalEntryId.random(), alice, bob, mxn("1.00"), "");
+            JournalEntry reversal = payment.reversal(JournalEntryId.random(), "");
+
+            assertThatThrownBy(() -> reversal.reversal(JournalEntryId.random(), ""))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("cannot be reversed");
+        }
+
+        @Test
+        void anEntryCannotReverseItself() {
+            JournalEntryId id = JournalEntryId.random();
+
+            assertThatThrownBy(() -> new JournalEntry(id, "", List.of(
+                    Posting.debit(alice, mxn("1.00")), Posting.credit(bob, mxn("1.00"))), id))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
 }

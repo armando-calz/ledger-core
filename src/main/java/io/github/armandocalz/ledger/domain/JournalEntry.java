@@ -11,8 +11,14 @@ import java.util.Objects;
  *
  * <p>Invariant: for each currency, the postings sum to zero (see ADR 0001). An entry that
  * would break it cannot be constructed.
+ *
+ * <p>{@code reverses} is set when this entry is the reversal of another one (ADR 0006).
  */
-public record JournalEntry(JournalEntryId id, String description, List<Posting> postings) {
+public record JournalEntry(JournalEntryId id, String description, List<Posting> postings, JournalEntryId reverses) {
+
+    public JournalEntry(JournalEntryId id, String description, List<Posting> postings) {
+        this(id, description, postings, null);
+    }
 
     public JournalEntry {
         Objects.requireNonNull(id, "id");
@@ -23,6 +29,30 @@ public record JournalEntry(JournalEntryId id, String description, List<Posting> 
             throw new IllegalArgumentException("A journal entry needs at least 2 postings, got " + postings.size());
         }
         requireBalanced(postings);
+        if (id.equals(reverses)) {
+            throw new IllegalArgumentException("An entry cannot reverse itself: " + id);
+        }
+    }
+
+    public boolean isReversal() {
+        return reverses != null;
+    }
+
+    /**
+     * A new entry that undoes this one: same accounts, every amount negated. The original
+     * stays untouched, since the books are append-only.
+     *
+     * @throws IllegalStateException if this entry is itself a reversal
+     */
+    public JournalEntry reversal(JournalEntryId reversalId, String description) {
+        if (isReversal()) {
+            throw new IllegalStateException("Entry %s is a reversal and cannot be reversed; post a new entry instead".formatted(id));
+        }
+        List<Posting> negated = postings.stream()
+                .map(posting -> new Posting(posting.accountId(), posting.amount().negate()))
+                .toList();
+        String text = description == null || description.isBlank() ? "Reversal of " + id : description;
+        return new JournalEntry(reversalId, text, negated, id);
     }
 
     /**
