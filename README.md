@@ -65,7 +65,7 @@ Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Testcontainers · D
 - [x] Idempotency keys for transfer requests (safe retries, including concurrent ones)
 - [x] Overdraft protection (insufficient funds), checked under row locks
 - [x] Concurrency control with tests that race parallel transfers (no double spending, no deadlocks)
-- [ ] Reversals (corrections as new entries)
+- [x] Reversals: corrections as new, linked entries, at most once per entry
 - [ ] Docker Compose setup for local run
 
 Design decisions are recorded as ADRs in [`docs/adr`](docs/adr).
@@ -80,7 +80,9 @@ Interactive docs at `http://localhost:8080/swagger-ui.html` once the service is 
 | `GET` | `/api/v1/accounts/{id}` | Get an account |
 | `GET` | `/api/v1/accounts/{id}/balance` | Balance from the holder's point of view |
 | `GET` | `/api/v1/accounts/{id}/movements` | Most recent movements, newest first |
-| `POST` | `/api/v1/transfers` | Debit one account and credit another |
+| `POST` | `/api/v1/transfers` | Debit one account and credit another (`Idempotency-Key` supported) |
+| `GET` | `/api/v1/transfers/{id}` | Get a transfer, including whether it was reversed |
+| `POST` | `/api/v1/transfers/{id}/reversal` | Undo a transfer with a new, linked entry (`409` if already reversed) |
 
 ```bash
 # Alice (a customer wallet) pays Bob 100.00 MXN
