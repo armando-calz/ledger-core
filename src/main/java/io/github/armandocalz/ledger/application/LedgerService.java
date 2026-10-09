@@ -108,6 +108,33 @@ public class LedgerService {
         return new TransferResult(original, true);
     }
 
+    @Transactional(readOnly = true)
+    public EntryDetails getEntry(JournalEntryId id) {
+        JournalEntry entry = entries.findById(id).orElseThrow(() -> new EntryNotFoundException(id));
+        return new EntryDetails(entry, entries.findReversalOf(id).orElse(null));
+    }
+
+    /**
+     * Undoes an entry by posting a new one with every amount negated (ADR 0006). The original
+     * entry is locked first, so concurrent attempts to reverse it are serialized and only one
+     * succeeds. The reversal goes through the same checks as any entry, including overdraft.
+     *
+     * @throws EntryNotFoundException        if the entry does not exist
+     * @throws EntryAlreadyReversedException if it was already reversed
+     * @throws IllegalStateException         if it is itself a reversal
+     */
+    @Transactional
+    public JournalEntry reverse(JournalEntryId id, String description) {
+        if (!entries.lock(id)) {
+            throw new EntryNotFoundException(id);
+        }
+        entries.findReversalOf(id).ifPresent(existing -> {
+            throw new EntryAlreadyReversedException(id, existing);
+        });
+        JournalEntry original = entries.findById(id).orElseThrow(() -> new EntryNotFoundException(id));
+        return post(original.reversal(JournalEntryId.random(), description));
+    }
+
     /**
      * Validates every posting against its account (currency, status, overdraft), then appends
      * the entry.

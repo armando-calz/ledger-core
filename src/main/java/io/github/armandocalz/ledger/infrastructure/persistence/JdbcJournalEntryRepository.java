@@ -29,9 +29,13 @@ class JdbcJournalEntryRepository implements JournalEntryRepository {
     @Override
     @Transactional
     public void append(JournalEntry entry) {
-        jdbc.sql("INSERT INTO journal_entries (id, description) VALUES (:id, :description)")
+        jdbc.sql("""
+                INSERT INTO journal_entries (id, description, reverses_entry_id)
+                VALUES (:id, :description, :reverses)
+                """)
                 .param("id", entry.id().value())
                 .param("description", entry.description())
+                .param("reverses", entry.reverses() == null ? null : entry.reverses().value())
                 .update();
         for (Posting posting : entry.postings()) {
             jdbc.sql("""
@@ -49,11 +53,13 @@ class JdbcJournalEntryRepository implements JournalEntryRepository {
     @Override
     @Transactional(readOnly = true)
     public Optional<JournalEntry> findById(JournalEntryId id) {
-        Optional<String> description = jdbc.sql("SELECT description FROM journal_entries WHERE id = :id")
+        record Header(String description, JournalEntryId reverses) {
+        }
+        Optional<Header> header = jdbc.sql("SELECT description, reverses_entry_id FROM journal_entries WHERE id = :id")
                 .param("id", id.value())
-                .query(String.class)
+                .query((rs, rowNum) -> new Header(rs.getString("description"), toEntryId(rs.getObject("reverses_entry_id", UUID.class))))
                 .optional();
-        if (description.isEmpty()) {
+        if (header.isEmpty()) {
             return Optional.empty();
         }
         List<Posting> postings = jdbc.sql("""
@@ -67,7 +73,30 @@ class JdbcJournalEntryRepository implements JournalEntryRepository {
                         new AccountId(rs.getObject("account_id", UUID.class)),
                         Money.ofMinor(rs.getLong("amount_minor"), Currency.getInstance(rs.getString("currency")))))
                 .list();
-        return Optional.of(new JournalEntry(id, description.get(), postings));
+        return Optional.of(new JournalEntry(id, header.get().description(), postings, header.get().reverses()));
+    }
+
+    @Override
+    public boolean lock(JournalEntryId id) {
+        // SELECT ... FOR UPDATE takes a row lock without firing the append-only UPDATE trigger
+        return jdbc.sql("SELECT id FROM journal_entries WHERE id = :id FOR UPDATE")
+                .param("id", id.value())
+                .query(UUID.class)
+                .optional()
+                .isPresent();
+    }
+
+    @Override
+    public Optional<JournalEntryId> findReversalOf(JournalEntryId id) {
+        return jdbc.sql("SELECT id FROM journal_entries WHERE reverses_entry_id = :id")
+                .param("id", id.value())
+                .query(UUID.class)
+                .optional()
+                .map(JournalEntryId::new);
+    }
+
+    private static JournalEntryId toEntryId(UUID value) {
+        return value == null ? null : new JournalEntryId(value);
     }
 
     @Override

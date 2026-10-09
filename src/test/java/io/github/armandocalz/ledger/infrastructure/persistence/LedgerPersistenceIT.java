@@ -165,6 +165,22 @@ class LedgerPersistenceIT {
             assertThat(entries.findById(payment.id())).contains(payment);
         }
 
+        @Test
+        void allowsAtMostOneReversalPerEntry() {
+            Account alice = openWallet("Alice wallet");
+            Account bob = openWallet("Bob wallet");
+            JournalEntry payment = JournalEntry.transfer(
+                    JournalEntryId.random(), alice.id(), bob.id(), Money.of("10.00", MXN), "");
+            entries.append(payment);
+            entries.append(payment.reversal(JournalEntryId.random(), ""));
+
+            assertThatThrownBy(() -> jdbc.sql("INSERT INTO journal_entries (id, reverses_entry_id) VALUES (:id, :reverses)")
+                    .param("id", UUID.randomUUID())
+                    .param("reverses", payment.id().value())
+                    .update())
+                    .rootCause().hasMessageContaining("duplicate key");
+        }
+
         private UUID insertEntry() {
             UUID id = UUID.randomUUID();
             jdbc.sql("INSERT INTO journal_entries (id) VALUES (:id)").param("id", id).update();
