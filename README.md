@@ -4,7 +4,18 @@
 
 A double-entry ledger service for moving money between accounts — correctly, idempotently and safely under concurrency.
 
-> **Status:** 🚧 early development. The roadmap below tracks what is done and what is next.
+> **Status:** v0.1.0. Feature-complete for its scope: see the [changelog](CHANGELOG.md) and [what's not covered](#not-covered-yet).
+
+## Quick start
+
+Only Docker is required.
+
+```bash
+git clone https://github.com/armando-calz/ledger-core.git && cd ledger-core
+docker compose up --build
+```
+
+Then open **http://localhost:8080/swagger-ui.html** and try the API.
 
 ## Why
 
@@ -66,7 +77,7 @@ Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Testcontainers · D
 - [x] Overdraft protection (insufficient funds), checked under row locks
 - [x] Concurrency control with tests that race parallel transfers (no double spending, no deadlocks)
 - [x] Reversals: corrections as new, linked entries, at most once per entry
-- [ ] Docker Compose setup for local run
+- [x] Docker Compose setup for local run
 
 Design decisions are recorded as ADRs in [`docs/adr`](docs/adr).
 
@@ -122,7 +133,7 @@ A transfer that would break a ledger rule is rejected without moving any money:
 
 Every transfer locks the accounts it touches (`SELECT … FOR UPDATE`, always in id order) before checking balances, so concurrent payments cannot spend the same money twice and opposing transfers cannot deadlock. [`LedgerConcurrencyIT`](src/test/java/io/github/armandocalz/ledger/application/LedgerConcurrencyIT.java) fires 500 simultaneous payments at a wallet holding enough for 100. Without the locks, 103–104 of them went through. With them, exactly 100 do. Details in [ADR 0004](docs/adr/0004-overdraft-protection-with-ordered-row-locks.md).
 
-## Running locally
+## Development
 
 Requirements: JDK 21 (a [`.sdkmanrc`](.sdkmanrc) is included for [SDKMAN!](https://sdkman.io) users) and Docker.
 
@@ -140,6 +151,16 @@ export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 ```
 </details>
+
+## Not covered (yet)
+
+Deliberately out of scope for v0.1.0, and what a production version would need:
+
+- **Authentication and multi-tenancy:** idempotency keys are global; they would be scoped per API client.
+- **Balance snapshots:** balances are summed from postings under the account lock; hot or long-lived accounts need a snapshot updated in the same transaction (ADR 0004).
+- **Idempotency key retention:** keys are kept forever; a cleanup job would expire them after 24–72 h (ADR 0005).
+- **Events:** an outbox table published to a broker, so other services can react to postings.
+- **Forced reversals:** chargebacks that must go through even if they leave an account negative (ADR 0006).
 
 ## License
 
